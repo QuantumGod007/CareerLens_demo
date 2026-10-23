@@ -32,6 +32,8 @@ class Profile(BaseModel):
 class ProfileUpdate(BaseModel):
     profile: Profile
     preferred_role: str = Field(min_length=2, max_length=150)
+    confirm: bool = False
+    expected_version: str | None = None
 
 
 class Job(BaseModel):
@@ -75,10 +77,16 @@ class TailoredFact(BaseModel):
     reason: str
 
 
+class OmittedFact(BaseModel):
+    source_id: str
+    reason: str = Field(min_length=5)
+
+
 class Tailoring(BaseModel):
     facts: list[TailoredFact]
     section_order: list[Section]
     rationale: str
+    omitted: list[OmittedFact] = Field(default_factory=list)
 
 
 class VerifiedRewrite(BaseModel):

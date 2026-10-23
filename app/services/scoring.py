@@ -3,6 +3,7 @@ import re
 import unicodedata
 
 from app.models import Profile
+from app.services.content import split_entry
 
 SCORING_VERSION = 2
 
@@ -116,7 +117,12 @@ def readability(text, profile, pdf_meta=None):
             positions.append((match.start(), heading))
     headings_found = [heading for _, heading in sorted(positions)]
     # This checks actual fact retention, not just page count or a word limit.
-    missing_facts = [f.id for f in profile.facts if compact(f.text) not in compact(text)]
+    missing_facts = []
+    for fact in profile.facts:
+        heading, body = split_entry(fact)
+        parts = ([heading] if heading else []) + body
+        if any(compact(part) not in compact(text) for part in parts):
+            missing_facts.append(fact.id)
     return [
         {'name': 'PDF text extraction', 'status': 'pass' if len(text.strip()) > 30 else 'review',
          'detail': f"{len(text.strip()):,} extractable characters" + (f" across {pdf_meta['pages']} page(s)." if pdf_meta else '.')},

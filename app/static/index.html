@@ -3,10 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f7f8fb">
+  <meta name="theme-color" content="#F6F7F5">
   <meta name="description" content="A thoughtful workspace for discovering roles and tailoring your resume using your actual experience.">
   <title>CareerLens — Your career, in focus</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -23,17 +24,17 @@
     </nav>
     <div class="sidebar-bottom">
       <div class="local-note"><span class="live-dot"></span> Your private, local workspace</div>
-      <p>Your experience.<br>Your next opportunity.</p>
+      <p>Profile, roles & saved versions.<br>One local workspace.</p>
       <div class="sidebar-profile"><div class="avatar" id="avatar">Y</div><div><strong id="sidebar-name">Your workspace</strong><small>Personal account · local</small></div></div>
     </div>
   </aside>
   <div class="app-shell">
     <header class="topbar">
-      <div class="topbar-title"><button class="icon-button mobile-menu" data-action="menu" aria-label="Toggle navigation" aria-expanded="false"><span data-icon="menu"></span></button><span id="page-title">Overview</span></div>
+      <div class="topbar-title"><button class="icon-button mobile-menu" data-action="menu" aria-label="Toggle navigation" aria-expanded="false"><span data-icon="menu"></span></button><span class="breadcrumb" aria-hidden="true">Workspace</span><span id="page-title">Overview</span></div>
       <div class="topbar-actions"><span class="connection" id="connection"><span class="live-dot"></span>Connecting</span><span class="topbar-divider"></span><button class="button button-small button-quiet" data-action="upload" aria-label="Upload resume"><span data-icon="upload"></span><span>Upload resume</span></button></div>
     </header>
     <main id="main" tabindex="-1"><div class="initial-loading"><span class="spinner"></span> Opening your workspace…</div></main>
-    <footer class="app-footer"><span>CAREERLENS <span class="footer-dot">/</span> A little clarity. A better next step.</span><span>Built around your real experience.</span></footer>
+    <footer class="app-footer"><span>CAREERLENS <span class="footer-dot">/</span> Your career, in focus.</span><span>Grounded in your experience.</span></footer>
   </div>
   <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
   <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>

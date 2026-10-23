@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import hashlib
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +19,7 @@ from app.services.store import Store, now
 from app.services.pdf import read_pdf, create_pdf, PDFError
 from app.services.scoring import SCORING_VERSION, coverage, profile_text, readability
 from app.services.discovery import discover
+from app.services.content import clean_profile
 
 MAX_UPLOAD = 10 * 1024 * 1024
 
@@ -56,11 +58,21 @@ def create_app(settings=None, ai=None):
     async def pdf_error(request, exc):
         return JSONResponse({'detail': str(exc)}, status_code=422)
 
-    def candidate_required():
+    def candidate_required(confirmed=False):
         candidate = store.candidate()
         if not candidate:
             raise HTTPException(409, 'Upload a resume first.')
+        if confirmed and not candidate['confirmed']:
+            raise HTTPException(409, 'Review and confirm your profile before finding or analysing jobs.')
         return candidate
+
+    def idle_required():
+        if app.state.ai_lock.locked():
+            raise HTTPException(409, 'An operation is already running. Wait for it to finish.')
+
+    def job_version(job):
+        return hashlib.sha256(json.dumps({k: job[k] for k in ('id', 'title', 'description', 'url')},
+                                         sort_keys=True).encode()).hexdigest()
 
     def assessment_required(record_id):
         record = store.assessment(record_id)
@@ -91,7 +103,8 @@ def create_app(settings=None, ai=None):
     def state():
         candidate = store.candidate()
         history = store.history()
-        return {'candidate': {'profile': candidate['profile'], 'preferred_role': candidate['preferred_role'],
+        return {'candidate': {'profile': clean_profile(Profile.model_validate(candidate['profile'])).model_dump(), 'preferred_role': candidate['preferred_role'],
+                              'confirmed': candidate['confirmed'], 'profile_version': candidate['profile_version'],
                               'updated_at': candidate['updated_at'], 'has_original': Path(candidate['upload_path']).is_file()} if candidate else None,
                 'history': [public_record(r) for r in history],
                 'gemini_configured': bool(settings.gemini_api_key), 'model': settings.gemini_model,
@@ -100,6 +113,7 @@ def create_app(settings=None, ai=None):
 
     @app.post('/api/resume')
     async def upload_resume(file: UploadFile = File(...), preferred_role: str = Form(...)):
+        idle_required()
         role = preferred_role.strip()
         if not 2 <= len(role) <= 150:
             raise HTTPException(422, 'Enter a preferred role between 2 and 150 characters.')
@@ -108,21 +122,27 @@ def create_app(settings=None, ai=None):
         if len(data) > MAX_UPLOAD:
             raise HTTPException(413, 'The resume must be 10 MB or smaller.')
         original_text, _ = await run_in_threadpool(read_pdf, data)
+        idle_required()
         async with app.state.ai_lock:
-            profile = await run_in_threadpool(gemini.extract, data)
+            profile = clean_profile(await run_in_threadpool(gemini.extract, data))
             upload_path = settings.data_dir / 'uploads' / f'{uuid4().hex}.pdf'
             upload_path.write_bytes(data)
             store.save_candidate(profile.model_dump(), role, upload_path, original_text)
         return {'profile': profile.model_dump(), 'preferred_role': role,
-                'message': 'Resume extracted and saved. Ready to discover live jobs.'}
+                'message': 'Resume extracted and saved. Review and confirm your profile next.'}
 
     @app.put('/api/profile')
     async def update_profile(payload: ProfileUpdate):
+        idle_required()
         async with app.state.ai_lock:
             candidate = candidate_required()
-            store.save_candidate(payload.profile.model_dump(), payload.preferred_role.strip(),
-                                 candidate['upload_path'], candidate['original_text'])
-        return {'profile': payload.profile.model_dump(), 'preferred_role': payload.preferred_role.strip()}
+            if (payload.expected_version is not None or payload.confirm) and payload.expected_version != candidate['profile_version']:
+                raise HTTPException(409, 'Your profile changed. Reload and review the latest version.')
+            profile = clean_profile(payload.profile)
+            store.save_candidate(profile.model_dump(), payload.preferred_role.strip(),
+                                 candidate['upload_path'], candidate['original_text'], confirmed=payload.confirm)
+        return {'profile': profile.model_dump(), 'preferred_role': payload.preferred_role.strip(),
+                'confirmed': payload.confirm, 'profile_version': store.candidate()['profile_version']}
 
     @app.get('/api/resume/original')
     def original_resume():
@@ -134,26 +154,37 @@ def create_app(settings=None, ai=None):
 
     @app.post('/api/jobs/discover')
     async def discover_jobs(payload: DiscoverRequest):
-        candidate = candidate_required()
-        profile = Profile.model_validate(candidate['profile'])
-        result = await discover(settings, profile, payload)
-        store.save_jobs(result['jobs'])
-        return {**result, 'jobs': [j.model_dump() for j in result['jobs']], 'fetched_at': now()}
+        idle_required()
+        async with app.state.ai_lock:
+            candidate = candidate_required(confirmed=True)
+            profile = Profile.model_validate(candidate['profile'])
+            result = await discover(settings, profile, payload)
+            latest = candidate_required(confirmed=True)
+            if latest['profile_version'] != candidate['profile_version']:
+                raise HTTPException(409, 'Your profile changed during discovery. Find jobs again.')
+            store.save_jobs(result['jobs'])
+        return {**result, 'jobs': [{**j.model_dump(), 'job_version': job_version(j.model_dump())} for j in result['jobs']], 'fetched_at': now()}
 
     @app.post('/api/jobs/{job_id}/analyse')
-    async def analyse_job(job_id: str, reuse_assessment: str | None = None):
+    async def analyse_job(job_id: str, reuse_assessment: str | None = None,
+                          expected_version: str | None = None, expected_job: str | None = None):
+        idle_required()
         previous = assessment_required(reuse_assessment) if reuse_assessment else None
         if previous and previous['job']['id'] != job_id:
             raise HTTPException(400, 'The saved assessment belongs to a different job.')
         raw = previous['job'] if previous else store.job(job_id)
         if not raw:
             raise HTTPException(404, 'Find this job again before analysing it.')
+        if expected_job and expected_job != job_version(raw):
+            raise HTTPException(409, 'This job description changed. Find jobs again and review it.')
         job = Job.model_validate(raw)
         if len(job.description) > 100_000:
             raise HTTPException(422, 'This listing is too long to analyse reliably.')
         async with app.state.ai_lock:
-            candidate = candidate_required()
-            profile = Profile.model_validate(candidate['profile'])
+            candidate = candidate_required(confirmed=True)
+            if expected_version and expected_version != candidate['profile_version']:
+                raise HTTPException(409, 'Your profile changed. Review it and find jobs again.')
+            profile = clean_profile(Profile.model_validate(candidate['profile']))
             analysis = (Analysis.model_validate(previous['analysis']) if previous else
                         await run_in_threadpool(gemini.analyse, profile, job))
             tailored, order, changes, verified = await run_in_threadpool(gemini.tailor, profile, job, analysis)
@@ -172,6 +203,10 @@ def create_app(settings=None, ai=None):
                     'original_profile': profile.model_dump(), 'tailored_profile': tailored.model_dump(),
                     'original_text': original_text, 'tailored_text': tailored_text, 'baseline': baseline,
                     'section_order': order, 'changes': changes, 'verification_available': verified,
+                    'profile_version': candidate['profile_version'],
+                    'enhancement_status': ('enhanced' if any(c['kind'] == 'wording' for c in changes) else
+                                           'selected' if any(c['kind'] == 'omission' for c in changes) else
+                                           'reordered' if any(c['kind'] == 'order' for c in changes) else 'unchanged'),
                     'original_score': coverage(original_text, analysis.required),
                     'tailored_score': coverage(tailored_text, analysis.required),
                     'scoring_version': SCORING_VERSION,

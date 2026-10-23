@@ -40,9 +40,9 @@ Open **http://127.0.0.1:8000**. API documentation is at **http://127.0.0.1:8000/
 ## Use the workspace
 
 1. Upload an unlocked PDF resume (up to 10 MB and 15 pages) and enter a preferred role.
-2. Gemini processes the PDF natively, including scanned documents, and saves a structured profile. Job discovery starts immediately. Review or edit the profile in **My resume** whenever needed.
+2. Gemini processes the PDF natively, including scanned documents, and saves a structured profile. Review or edit it in **My resume**, then use **Confirm profile & find jobs**. Edits require confirmation again.
 3. **Find jobs** fetches published listings from the configured company boards. Search by role, optionally filter by location or early-career titles, and inspect a listing in the split view.
-4. **Analyse & tailor** extracts evidenced requirements, tailors the saved facts, independently verifies proposed rewrites, generates a PDF, and saves a new job-specific record. This can take a minute or two.
+4. **Analyse & enhance** extracts evidenced requirements, tailors the saved facts, independently verifies proposed rewrites, generates a PDF, and saves a new job-specific record. This can take a minute or two.
 5. Inspect **Role analysis**, **Resume comparison**, **Skill coverage**, and both actual PDF previews. Download the tailored version.
 6. In **Review application**, answer the local review questions and optionally run a **simulated submission**. The local test receiver stores the answers and a receipt. **No employer receives this test.** Use the employer's original link to apply manually.
 7. Reopen any saved assessment from **Application history**. Older profiles, job descriptions, assessments, answers, and PDFs remain associated with their own records, including after restarting the server or replacing the main resume.
@@ -66,7 +66,7 @@ Public GET APIs do not provide the complete employer application form in this im
 
 ## Resume accuracy and coverage
 
-The original PDF is sent to Gemini once per upload, not once per job. Contact details, links and skills are copied directly from the saved profile into every tailored PDF. Every tailored fact references an existing fact ID. Unknown IDs and duplicates are rejected, omitted facts are restored, and new metrics or skill changes are blocked. Rewrites also require an independent Gemini entailment check and local guards that preserve names, technical terms, scope qualifiers and metrics. If verification fails or is unavailable, the original wording is retained. Tailoring can still reorder sections and facts without changing claims.
+The original PDF is sent to Gemini once per upload, not once per job. Contact details, links and skills are copied directly from the saved profile into every tailored PDF. Every tailored fact references an existing fact ID. Unknown IDs and duplicates are rejected, unexplained omissions are restored, and new metrics or skill changes are blocked. Gemini may select fewer projects only with an explicit JD-based reason accepted by an independent check; excluded projects remain in the original profile and change log. Education, experience and other qualifications cannot be excluded. Exact repeated text is removed and related bullets share one project/experience heading. Rewrites also require an independent Gemini entailment check and local guards that preserve names, technical terms, scope qualifiers and metrics. If verification fails or is unavailable, the original wording is retained. Tailoring can still reorder sections and facts without changing claims. When no content improvement passes verification, the UI reports that source wording was retained. Selected JD snapshots, profile versions and assessment PDFs remain linked; stale profiles/listings and overlapping AI operations are rejected.
 
 AI extraction and requirement classification can make mistakes. Review the editable profile, original PDF, evidence excerpts and final PDF. The application deliberately favors retaining factual wording over speculative improvements. It does not add missing skills or invent experience.
 

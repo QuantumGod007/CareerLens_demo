@@ -1,5 +1,7 @@
 import json
 import sqlite3
+import hashlib
+from uuid import uuid4
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -51,12 +53,17 @@ class Store:
             return None
         result = dict(row)
         result['profile'] = json.loads(result['profile'])
+        metadata = result['profile'].pop('_careerlens', {})
+        result['confirmed'] = metadata.get('confirmed', False)
+        result['profile_version'] = metadata.get('version') or hashlib.sha256(
+            (result['upload_path'] + result['updated_at']).encode()).hexdigest()[:32]
         return result
 
-    def save_candidate(self, profile, role, upload_path, original_text):
+    def save_candidate(self, profile, role, upload_path, original_text, confirmed=False, version=None):
+        payload = {**profile, '_careerlens': {'confirmed': confirmed, 'version': version or uuid4().hex}}
         with self.connect() as db:
             db.execute('INSERT OR REPLACE INTO candidate VALUES (1,?,?,?,?,?)',
-                       (json.dumps(profile), role, str(upload_path), original_text, now()))
+                       (json.dumps(payload), role, str(upload_path), original_text, now()))
 
     def save_jobs(self, jobs):
         with self.connect() as db:

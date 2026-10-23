@@ -10,9 +10,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, KeepTogether
 
 from app.models import SECTION_ORDER
+from app.services.content import clean_profile, grouped_entries
 
 
 class PDFError(ValueError):
@@ -46,6 +47,7 @@ def register_fonts():
 
 
 def create_pdf(profile, path, section_order=None):
+    profile = clean_profile(profile)
     register_fonts()
     ink, muted, accent = colors.HexColor('#182433'), colors.HexColor('#536071'), colors.HexColor('#3056A0')
     body = ParagraphStyle('body', fontName='ResumeSans', fontSize=10.2, leading=15.3, textColor=ink,
@@ -56,6 +58,10 @@ def create_pdf(profile, path, section_order=None):
                           alignment=TA_CENTER, spaceAfter=6)
     contact = ParagraphStyle('contact', parent=body, fontSize=9, leading=13, textColor=muted,
                              alignment=TA_CENTER, spaceAfter=4)
+    entry_heading = ParagraphStyle('entry', parent=body, fontName='ResumeSans-Bold', spaceBefore=5,
+                                   spaceAfter=4, keepWithNext=True)
+    bullet = ParagraphStyle('bullet', parent=body, leftIndent=12, bulletIndent=1,
+                            bulletFontName='ResumeSans', bulletFontSize=9, spaceAfter=5)
     doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=47, leftMargin=47, topMargin=40,
                             bottomMargin=43, title=f'{profile.name or "Candidate"} - Resume', author=profile.name)
     safe = lambda text: escape(text).replace('\n', '<br/>')
@@ -76,8 +82,13 @@ def create_pdf(profile, path, section_order=None):
         facts = [f for f in profile.facts if f.section == section]
         if facts:
             flow.append(Paragraph(section.upper(), heading))
-            for fact in facts:
-                flow.append(Paragraph(safe(fact.text), body))
+            for entry in grouped_entries(facts):
+                if entry['heading']:
+                    flow.append(Paragraph(safe(entry['heading']), entry_heading))
+                for text in entry['items']:
+                    paragraph = Paragraph(safe(text), bullet if entry['heading'] else body,
+                                          bulletText='•' if entry['heading'] else None)
+                    flow.append(KeepTogether([paragraph]) if entry['heading'] else paragraph)
 
     def footer(canvas, document):
         canvas.setFont('ResumeSans', 7)

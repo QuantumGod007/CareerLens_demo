@@ -40,6 +40,8 @@ def test_complete_local_workflow_and_persistence(profile,tmp_path,monkeypatch):
         response=client.post('/api/resume',files={'file':('resume.pdf',sample_pdf(),'application/pdf')},data={'preferred_role':'Software Intern'})
         assert response.status_code==200,response.text
         assert client.get('/api/resume/original').headers['content-type']=='application/pdf'
+        from test_focused_fixes import confirm
+        confirm(client)
         # Persist an explicit fixture listing for route tests, never a live-job claim.
         job=Job(id='lever:demo:test',source='lever',board='demo',company='Demo Test Company',title='Software Intern',location='Remote',description='Python required. Java required.',url='https://example.com/test-job')
         app.state.store.save_jobs([job])
@@ -54,7 +56,8 @@ def test_complete_local_workflow_and_persistence(profile,tmp_path,monkeypatch):
             pdf=client.get(f'/api/history/{record["id"]}/pdf')
             text='\n'.join(p.extract_text() for p in PdfReader(BytesIO(pdf.content)).pages)
             assert profile.email in text
-            assert all(f.text in text.replace('\n',' ') for f in profile.facts)
+            from app.services.content import split_entry
+            assert all(part in text.replace('\n',' ') for f in profile.facts for part in ([split_entry(f)[0]]+split_entry(f)[1]) if part)
         assert len(set(saved))==2 and fake.extractions==1
         assert len(client.get('/api/history').json())==2
         assert client.post(f'/api/test-receiver/{saved[0]}',json={'name':'Demo','email':'bad','work_authorization':'Test','availability':'Now'}).status_code==422
@@ -81,7 +84,7 @@ def test_pdf_validation_and_long_content(profile,tmp_path):
     long=profile.model_copy(update={'facts':facts})
     text,meta=create_pdf(long,path)
     assert meta['pages']>1
-    assert 'Project 29:' in text and 'Project 0:' in text
+    assert 'Project 29' in text and 'Project 0' in text
     assert profile.email in text
     assert all(c['status']=='pass' for c in __import__('app.services.scoring',fromlist=['readability']).readability(text,long,meta))
 
@@ -122,6 +125,8 @@ def test_updated_resume_reuses_requirements_and_preserves_prior_pdf(profile,tmp_
     app=create_app(Settings(_env_file=None,data_dir=tmp_path,gemini_api_key=''),ai=fake)
     with TestClient(app) as client:
         client.post('/api/resume',files={'file':('resume.pdf',sample_pdf(),'application/pdf')},data={'preferred_role':'Developer'})
+        from test_focused_fixes import confirm
+        confirm(client)
         job=Job(id='lever:demo:one',source='lever',board='demo',company='Demo',title='Developer',location='Remote',description='Python required. Java required.',url='https://example.com/1')
         app.state.store.save_jobs([job])
         first=client.post('/api/jobs/lever:demo:one/analyse').json()
