@@ -1,0 +1,11 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+google-genai>=1.50,<3
+pydantic>=2.10,<3
+pydantic-settings>=2.7,<3
+python-multipart>=0.0.20,<1
+httpx>=0.28,<1
+reportlab>=4.3,<5
+pypdf>=5.3,<7
+beautifulsoup4>=4.13,<5
+pytest>=8.3,<10
